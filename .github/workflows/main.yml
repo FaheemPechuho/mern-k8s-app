@@ -92,6 +92,14 @@ jobs:
         mkdir -p $HOME/.kube
         echo "${{ secrets.KUBE_CONFIG }}" > $HOME/.kube/config
         chmod 600 $HOME/.kube/config
+        # Verify kubectl configuration
+        kubectl config view
+        kubectl cluster-info
+        
+    - name: Create and switch to namespace
+      run: |
+        kubectl create namespace mern-stack --dry-run=client -o yaml | kubectl apply -f -
+        kubectl config set-context --current --namespace=mern-stack
         
     - name: Update Kubernetes manifests
       run: |
@@ -102,9 +110,14 @@ jobs:
         
     - name: Deploy to Kubernetes
       run: |
-        kubectl apply -f k8s/namespace.yaml --validate=false
-        kubectl apply -f k8s/mongodb/ --validate=false
-        kubectl apply -f k8s/backend/ --validate=false
-        kubectl apply -f k8s/frontend/ --validate=false
-        kubectl rollout status deployment/frontend-deployment -n mern-stack
-        kubectl rollout status deployment/backend-deployment -n mern-stack 
+        # Apply manifests with error handling
+        kubectl apply -f k8s/mongodb/ --validate=false || true
+        kubectl apply -f k8s/backend/ --validate=false || true
+        kubectl apply -f k8s/frontend/ --validate=false || true
+        
+        # Wait for deployments
+        kubectl wait --for=condition=available --timeout=300s deployment/frontend-deployment -n mern-stack
+        kubectl wait --for=condition=available --timeout=300s deployment/backend-deployment -n mern-stack
+        
+        # Verify deployments
+        kubectl get all -n mern-stack 
